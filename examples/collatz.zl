@@ -1,0 +1,29 @@
+?? Collatz length: how many steps to reach 1.
+?? Mixes lisp helpers with a zlang main that picks the input.
+lisp {
+    (defn even (n) (= (% n 2) 0))
+
+    (defn next (n)
+        (if (even n)
+            (/ n 2)
+            (+ (* n 3) 1)))
+
+    (defn length (n)
+        (let ((steps 0))
+            (while (> n 1)
+                (set n (next n))
+                (set steps (+ steps 1)))
+            steps))
+}
+
+fun report(n: i32) >> i32 {
+    @printf("collatz(%d) = %d steps\n", n, length(n));
+    return 0;
+}
+
+fun main() >> i32 {
+    report(6);
+    report(27);
+    report(97);
+    return 0;
+}

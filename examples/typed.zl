@@ -1,0 +1,19 @@
+?? Typed lisp params. Default is i32; override with (name type)
+?? pairs in the param list and -> return type after it.
+lisp {
+    (defn add64 ((a i64) (b i64)) -> i64
+        (+ a b))
+
+    (defn loud_double ((x i32)) -> i32
+        (let ((r (* x 2)))
+            (@printf "loud_double(%d) -> %d\n" x r)
+            r))
+}
+
+fun main() >> i32 {
+    i64 sum = add64(2000000000, 2000000000);
+    @printf("sum = %ld\n", sum);
+    i32 v = loud_double(21);
+    @printf("v = %d\n", v);
+    return 0;
+}

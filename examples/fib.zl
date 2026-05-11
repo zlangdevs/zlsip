@@ -1,0 +1,23 @@
+?? Fibonacci two ways: recursive and iterative with let/while.
+lisp {
+    (defn fib_rec (n)
+        (if (< n 2)
+            n
+            (+ (fib_rec (- n 1)) (fib_rec (- n 2)))))
+
+    (defn fib_iter (n)
+        (let ((a 0) (b 1) (i 0))
+            (while (< i n)
+                (let ((t b))
+                    (set b (+ a b))
+                    (set a t)
+                    (set i (+ i 1))))
+            a))
+}
+
+fun main() >> i32 {
+    @printf("fib_rec(10)  = %d\n", fib_rec(10));
+    @printf("fib_iter(20) = %d\n", fib_iter(20));
+    @printf("fib_iter(30) = %d\n", fib_iter(30));
+    return 0;
+}
