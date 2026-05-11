@@ -1,0 +1,16 @@
+?? Define lisp functions, call them from zlang.
+lisp {
+    (defn add (a b) (+ a b))
+    (defn sqr (x) (* x x))
+    (defn pow (base exp)
+        (if (<= exp 0)
+            1
+            (* base (pow base (- exp 1)))))
+}
+
+fun main() >> i32 {
+    @printf("add(3, 4)  = %d\n", add(3, 4));
+    @printf("sqr(7)     = %d\n", sqr(7));
+    @printf("pow(2, 10) = %d\n", pow(2, 10));
+    return 0;
+}

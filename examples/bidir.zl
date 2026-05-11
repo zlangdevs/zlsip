@@ -1,0 +1,18 @@
+?? Bidirectional calls: lisp calls zlang, zlang calls lisp.
+fun zlang_double(x: i32) >> i32 {
+    return x * 2;
+}
+
+lisp {
+    (defn boosted (n) (zlang_double (+ n 1)))
+    (defn fact (n)
+        (if (<= n 1)
+            1
+            (* n (fact (- n 1)))))
+}
+
+fun main() >> i32 {
+    @printf("boosted(5) = %d\n", boosted(5));
+    @printf("fact(6)    = %d\n", fact(6));
+    return 0;
+}

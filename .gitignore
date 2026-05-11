@@ -1,0 +1,6 @@
+zlisp.so
+zlisp.so.o
+zlisp.zlx
+*.o
+.zig-cache/
+zig-out/
