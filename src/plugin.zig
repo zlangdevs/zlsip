@@ -8,11 +8,19 @@ const HostApi = extern struct {
     register_module: *const fn (host: *HostApi, name: [*:0]const u8, path: [*:0]const u8) callconv(.c) c_int,
     register_link_flag: *const fn (host: *HostApi, flag: [*:0]const u8) callconv(.c) c_int,
     diagnostic: *const fn (host: *HostApi, level: c_int, file: ?[*:0]const u8, line: u32, column: u32, message: [*:0]const u8, hint: ?[*:0]const u8) callconv(.c) void,
+    resolve_type_size: *const fn (host: *HostApi, file: [*:0]const u8, type_name: [*:0]const u8) callconv(.c) i32,
+    get_cli_flag: *const fn (host: *HostApi, name: [*:0]const u8) callconv(.c) ?[*:0]const u8,
 };
 
 const BlockSyntax = extern struct { mode: c_int, terminator: ?[*:0]const u8 };
 const BlockInput = extern struct { file: [*:0]const u8, line: u32, column: u32, raw_source: [*]const u8, raw_source_len: u32 };
-const BlockOutput = extern struct { generated_zlang_source: [*]const u8, generated_zlang_source_len: u32 };
+const SourceMapEntry = extern struct { generated_offset: u32, original_line: u32, original_column: u32 };
+const BlockOutput = extern struct {
+    generated_zlang_source: [*]const u8,
+    generated_zlang_source_len: u32,
+    source_map: ?[*]const SourceMapEntry,
+    source_map_len: u32,
+};
 const BlockHandler = *const fn (host: *HostApi, input: *const BlockInput, output: *BlockOutput) callconv(.c) c_int;
 
 const ProbeResult = extern struct {
@@ -29,11 +37,13 @@ const PluginDesc = extern struct {
     name: [*:0]const u8,
     version: [*:0]const u8,
     register_plugin: *const fn (host: *HostApi) callconv(.c) c_int,
+    session_begin: ?*const fn (host: *HostApi) callconv(.c) void,
+    session_end: ?*const fn (host: *HostApi) callconv(.c) void,
 };
 
 var probe_singleton: ProbeResult = .{
     .api_min = 1,
-    .api_max = 1,
+    .api_max = 3,
     .name = "zlisp",
     .version = "0.1.0",
     .requires_host_features = null,
@@ -41,10 +51,12 @@ var probe_singleton: ProbeResult = .{
 
 var desc_singleton: PluginDesc = .{
     .api_min = 1,
-    .api_max = 1,
+    .api_max = 3,
     .name = "zlisp",
     .version = "0.1.0",
     .register_plugin = registerPlugin,
+    .session_begin = sessionBegin,
+    .session_end = null,
 };
 
 const alloc = std.heap.c_allocator;
@@ -447,8 +459,15 @@ fn lispHandler(host: *HostApi, input: *const BlockInput, output: *BlockOutput) c
     output.* = .{
         .generated_zlang_source = output_buf.items.ptr,
         .generated_zlang_source_len = @intCast(output_buf.items.len),
+        .source_map = null,
+        .source_map_len = 0,
     };
     return 0;
+}
+
+fn sessionBegin(host: *HostApi) callconv(.c) void {
+    _ = host;
+    output_buf.clearRetainingCapacity();
 }
 
 fn registerPlugin(host: *HostApi) callconv(.c) c_int {

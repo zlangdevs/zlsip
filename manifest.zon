@@ -3,7 +3,7 @@
     .version = "0.1.0",
     .format_version = 1,
     .api_min = 1,
-    .api_max = 1,
+    .api_max = 3,
     .targets = .{ "linux-x86_64" },
     .dependencies = .{},
     .modules = .{},
