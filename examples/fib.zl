@@ -1,4 +1,5 @@
-?? Fibonacci two ways: recursive and iterative with let/while.
+use std
+
 lisp {
     (defn fib_rec (n)
         (if (< n 2)
@@ -16,8 +17,8 @@ lisp {
 }
 
 fun main() >> i32 {
-    @printf("fib_rec(10)  = %d\n", fib_rec(10));
-    @printf("fib_iter(20) = %d\n", fib_iter(20));
-    @printf("fib_iter(30) = %d\n", fib_iter(30));
+    printf("fib_rec(10)  = %d\n", fib_rec(10));
+    printf("fib_iter(20) = %d\n", fib_iter(20));
+    printf("fib_iter(30) = %d\n", fib_iter(30));
     return 0;
 }
