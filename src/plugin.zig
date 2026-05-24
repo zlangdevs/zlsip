@@ -56,7 +56,7 @@ var desc_singleton: PluginDesc = .{
     .version = "0.1.0",
     .register_plugin = registerPlugin,
     .session_begin = sessionBegin,
-    .session_end = null,
+    .session_end = sessionEnd,
 };
 
 const alloc = std.heap.c_allocator;
@@ -143,6 +143,133 @@ const Parser = struct {
         return try makeNode(if (is_num) .number else .symbol, text);
     }
 };
+
+// --- Macro system -----------------------------------------------------------
+// defmacro defines a template macro. Expansion is substitution-based: every
+// occurrence of a parameter symbol in the body is replaced by the matching
+// argument subtree, then the result is re-expanded so macros can build on
+// macros. All nodes produced during expansion are tracked in `macro_pool` and
+// freed together; originals (owned by the parse forms) are never shared.
+
+const MacroDef = struct {
+    params: std.ArrayList([]const u8),
+    body: *Node,
+};
+
+// `macros` and `session_pool` persist for the whole compilation (across every
+// `lisp { ... }` block in a file), so a macro defined in one block is usable in
+// later ones. Macro bodies are deep-copied with duplicated text into
+// `session_pool` because the per-block parse forms and raw source are freed
+// after each handler call. `expand_pool` is per-block scratch for expansion.
+var macros: std.StringHashMap(MacroDef) = undefined;
+var macros_ready: bool = false;
+var session_pool: std.ArrayList(*Node) = .empty;
+var expand_pool: std.ArrayList(*Node) = .empty;
+
+fn trackNode(kind: NodeKind, text: []const u8) !*Node {
+    const n = try alloc.create(Node);
+    n.* = .{ .kind = kind, .text = text };
+    try expand_pool.append(alloc, n);
+    return n;
+}
+
+fn cloneTree(node: *Node) ParseError!*Node {
+    const n = try trackNode(node.kind, node.text);
+    for (node.children.items) |c| try n.children.append(alloc, try cloneTree(c));
+    return n;
+}
+
+fn clonePersistent(node: *Node) ParseError!*Node {
+    const txt = try alloc.dupe(u8, node.text);
+    const n = try alloc.create(Node);
+    n.* = .{ .kind = node.kind, .text = txt };
+    try session_pool.append(alloc, n);
+    for (node.children.items) |c| try n.children.append(alloc, try clonePersistent(c));
+    return n;
+}
+
+fn resetMacros() void {
+    if (macros_ready) {
+        var it = macros.valueIterator();
+        while (it.next()) |v| {
+            for (v.params.items) |p| alloc.free(p);
+            v.params.deinit(alloc);
+        }
+        var kit = macros.keyIterator();
+        while (kit.next()) |k| alloc.free(k.*);
+        macros.deinit();
+    }
+    for (session_pool.items) |n| {
+        alloc.free(n.text);
+        n.children.deinit(alloc);
+        alloc.destroy(n);
+    }
+    session_pool.clearRetainingCapacity();
+    macros = std.StringHashMap(MacroDef).init(alloc);
+    macros_ready = true;
+}
+
+fn instantiate(tmpl: *Node, params: [][]const u8, args: []*Node) ParseError!*Node {
+    if (tmpl.kind == .symbol) {
+        for (params, 0..) |p, i| {
+            if (std.mem.eql(u8, p, tmpl.text) and i < args.len) return cloneTree(args[i]);
+        }
+        return cloneTree(tmpl);
+    }
+    if (tmpl.kind != .list) return cloneTree(tmpl);
+    const n = try trackNode(.list, tmpl.text);
+    for (tmpl.children.items) |c| try n.children.append(alloc, try instantiate(c, params, args));
+    return n;
+}
+
+fn expand(node: *Node, depth: u32) ParseError!*Node {
+    if (node.kind == .list and node.children.items.len > 0) {
+        const head = node.children.items[0];
+        if (head.kind == .symbol and depth < 64) {
+            if (macros.get(head.text)) |m| {
+                const inst = try instantiate(m.body, m.params.items, node.children.items[1..]);
+                return expand(inst, depth + 1);
+            }
+        }
+    }
+    if (node.kind != .list) return cloneTree(node);
+    const n = try trackNode(node.kind, node.text);
+    for (node.children.items) |c| try n.children.append(alloc, try expand(c, depth));
+    return n;
+}
+
+fn registerMacro(node: *Node) ParseError!void {
+    const items = node.children.items;
+    if (items.len < 4) return; // (defmacro name (params) body...)
+    const name = items[1];
+    const params_node = items[2];
+    const body_forms = items[3..];
+
+    var params: std.ArrayList([]const u8) = .empty;
+    for (params_node.children.items) |p| try params.append(alloc, try alloc.dupe(u8, p.text));
+
+    var body: *Node = undefined;
+    if (body_forms.len == 1) {
+        body = try clonePersistent(body_forms[0]);
+    } else {
+        const do_node = try alloc.create(Node);
+        do_node.* = .{ .kind = .list, .text = try alloc.dupe(u8, "") };
+        try session_pool.append(alloc, do_node);
+        const do_sym = try alloc.create(Node);
+        do_sym.* = .{ .kind = .symbol, .text = try alloc.dupe(u8, "do") };
+        try session_pool.append(alloc, do_sym);
+        try do_node.children.append(alloc, do_sym);
+        for (body_forms) |bf| try do_node.children.append(alloc, try clonePersistent(bf));
+        body = do_node;
+    }
+    try macros.put(try alloc.dupe(u8, name.text), .{ .params = params, .body = body });
+}
+
+fn isMacroDef(node: *Node) bool {
+    return node.kind == .list and node.children.items.len > 0 and
+        node.children.items[0].kind == .symbol and
+        std.mem.eql(u8, node.children.items[0].text, "defmacro");
+}
 
 fn emit(s: []const u8) void {
     output_buf.appendSlice(alloc, s) catch {};
@@ -432,8 +559,30 @@ fn lispHandler(host: *HostApi, input: *const BlockInput, output: *BlockOutput) c
         forms.append(alloc, node) catch return 1;
     }
 
-    var all_defns = true;
+    // Macro pass: register defmacro forms, then expand everything else.
+    // `macros`/`session_pool` persist across blocks (set up in sessionBegin);
+    // `expand_pool` is scratch freed at the end of this block.
+    if (!macros_ready) resetMacros();
+    defer {
+        for (expand_pool.items) |n| {
+            n.children.deinit(alloc);
+            alloc.destroy(n);
+        }
+        expand_pool.clearRetainingCapacity();
+    }
+
+    var prog: std.ArrayList(*Node) = .empty;
+    defer prog.deinit(alloc);
     for (forms.items) |f| {
+        if (isMacroDef(f)) {
+            registerMacro(f) catch return 1;
+            continue;
+        }
+        prog.append(alloc, expand(f, 0) catch return 1) catch return 1;
+    }
+
+    var all_defns = prog.items.len > 0;
+    for (prog.items) |f| {
         if (f.kind != .list or f.children.items.len == 0) {
             all_defns = false;
             break;
@@ -446,9 +595,9 @@ fn lispHandler(host: *HostApi, input: *const BlockInput, output: *BlockOutput) c
     }
 
     if (all_defns) {
-        for (forms.items) |f| emitDefn(f);
+        for (prog.items) |f| emitDefn(f);
     } else {
-        for (forms.items) |f| {
+        for (prog.items) |f| {
             if (f.kind == .list and f.children.items.len > 0 and f.children.items[0].kind == .symbol and std.mem.eql(u8, f.children.items[0].text, "defn")) {
                 continue;
             }
@@ -468,6 +617,28 @@ fn lispHandler(host: *HostApi, input: *const BlockInput, output: *BlockOutput) c
 fn sessionBegin(host: *HostApi) callconv(.c) void {
     _ = host;
     output_buf.clearRetainingCapacity();
+    resetMacros();
+}
+
+fn sessionEnd(host: *HostApi) callconv(.c) void {
+    _ = host;
+    if (macros_ready) {
+        var it = macros.valueIterator();
+        while (it.next()) |v| {
+            for (v.params.items) |p| alloc.free(p);
+            v.params.deinit(alloc);
+        }
+        var kit = macros.keyIterator();
+        while (kit.next()) |k| alloc.free(k.*);
+        macros.deinit();
+        macros_ready = false;
+    }
+    for (session_pool.items) |n| {
+        alloc.free(n.text);
+        n.children.deinit(alloc);
+        alloc.destroy(n);
+    }
+    session_pool.clearRetainingCapacity();
 }
 
 fn registerPlugin(host: *HostApi) callconv(.c) c_int {
