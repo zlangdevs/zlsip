@@ -433,6 +433,26 @@ fn emitStmt(node: *Node) void {
         emit("}\n");
         return;
     }
+    if (std.mem.eql(u8, head.text, "when")) {
+        emit("if (");
+        emitExpr(args[0]);
+        emit(") {\n");
+        for (args[1..]) |s| emitStmt(s);
+        emit("}\n");
+        return;
+    }
+    if (std.mem.eql(u8, head.text, "unless")) {
+        emit("if (!(");
+        emitExpr(args[0]);
+        emit(")) {\n");
+        for (args[1..]) |s| emitStmt(s);
+        emit("}\n");
+        return;
+    }
+    if (std.mem.eql(u8, head.text, "cond")) {
+        emitCond(args, null);
+        return;
+    }
     if (std.mem.eql(u8, head.text, "return")) {
         emit("return ");
         if (args.len > 0) emitExpr(args[0]) else emit("0");
@@ -445,6 +465,43 @@ fn emitStmt(node: *Node) void {
     }
     emitExpr(node);
     emit(";\n");
+}
+
+fn emitCondBody(body: []*Node, ret_type: ?[]const u8) void {
+    if (ret_type) |rt| {
+        if (body.len == 0) {
+            if (!std.mem.eql(u8, rt, "void")) emit("return 0;\n");
+            return;
+        }
+        for (body[0 .. body.len - 1]) |s| emitStmt(s);
+        emitReturnFrom(body[body.len - 1], rt);
+    } else {
+        for (body) |s| emitStmt(s);
+    }
+}
+
+// (cond (test body...) ... (else body...)) -> if / else if / else chain.
+fn emitCond(clauses: []*Node, ret_type: ?[]const u8) void {
+    var first = true;
+    for (clauses) |clause| {
+        if (clause.kind != .list or clause.children.items.len == 0) continue;
+        const test_node = clause.children.items[0];
+        const body = clause.children.items[1..];
+        const is_else = test_node.kind == .symbol and std.mem.eql(u8, test_node.text, "else");
+        if (!first) emit(" else ");
+        if (is_else) {
+            emit("{\n");
+        } else {
+            emit("if (");
+            emitExpr(test_node);
+            emit(") {\n");
+        }
+        emitCondBody(body, ret_type);
+        emit("}");
+        first = false;
+        if (is_else) break;
+    }
+    emit("\n");
 }
 
 fn emitDefn(node: *Node) void {
@@ -524,7 +581,13 @@ fn emitReturnFrom(node: *Node, ret_type: []const u8) void {
             emitReturnFrom(body[body.len - 1], ret_type);
             return;
         }
-        if (std.mem.eql(u8, lh, "while") or std.mem.eql(u8, lh, "set")) {
+        if (std.mem.eql(u8, lh, "cond")) {
+            emitCond(args, ret_type);
+            return;
+        }
+        if (std.mem.eql(u8, lh, "while") or std.mem.eql(u8, lh, "set") or
+            std.mem.eql(u8, lh, "when") or std.mem.eql(u8, lh, "unless"))
+        {
             emitStmt(node);
             if (!std.mem.eql(u8, ret_type, "void")) emit("return 0;\n");
             return;
