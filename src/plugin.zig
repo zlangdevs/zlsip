@@ -400,15 +400,28 @@ fn emitStmt(node: *Node) void {
         return;
     }
     if (std.mem.eql(u8, head.text, "let")) {
-        const bindings = args[0];
-        for (bindings.children.items) |b| {
-            emit("i32 ");
-            emitExpr(b.children.items[0]);
-            emit(" = ");
-            emitExpr(b.children.items[1]);
-            emit(";\n");
-        }
+        emitLetBindings(args[0]);
         for (args[1..]) |s| emitStmt(s);
+        return;
+    }
+    if (std.mem.eql(u8, head.text, "for")) {
+        // (for (i start end [step]) body...)
+        const spec = args[0];
+        const it = spec.children.items;
+        const var_name = it[0].text;
+        emitFmt("for i32 {s} = ", .{var_name});
+        emitExpr(it[1]);
+        emitFmt("; {s} < ", .{var_name});
+        emitExpr(it[2]);
+        if (it.len > 3) {
+            emitFmt("; {s} += ", .{var_name});
+            emitExpr(it[3]);
+        } else {
+            emitFmt("; {s}++", .{var_name});
+        }
+        emit(" {\n");
+        for (args[1..]) |s| emitStmt(s);
+        emit("}\n");
         return;
     }
     if (std.mem.eql(u8, head.text, "if")) {
@@ -465,6 +478,26 @@ fn emitStmt(node: *Node) void {
     }
     emitExpr(node);
     emit(";\n");
+}
+
+// Each binding is (name value) -> i32, or (name type value) -> typed.
+fn emitLetBindings(bindings: *Node) void {
+    for (bindings.children.items) |b| {
+        const it = b.children.items;
+        if (it.len >= 3) {
+            emit(it[1].text);
+            emit(" ");
+            emitExpr(it[0]);
+            emit(" = ");
+            emitExpr(it[2]);
+        } else {
+            emit("i32 ");
+            emitExpr(it[0]);
+            emit(" = ");
+            emitExpr(it[1]);
+        }
+        emit(";\n");
+    }
 }
 
 fn emitCondBody(body: []*Node, ret_type: ?[]const u8) void {
@@ -568,17 +601,15 @@ fn emitReturnFrom(node: *Node, ret_type: []const u8) void {
             return;
         }
         if (std.mem.eql(u8, lh, "let") and args.len >= 2) {
-            const bindings = args[0];
-            for (bindings.children.items) |b| {
-                emit("i32 ");
-                emitExpr(b.children.items[0]);
-                emit(" = ");
-                emitExpr(b.children.items[1]);
-                emit(";\n");
-            }
+            emitLetBindings(args[0]);
             const body = args[1..];
             for (body[0 .. body.len - 1]) |s| emitStmt(s);
             emitReturnFrom(body[body.len - 1], ret_type);
+            return;
+        }
+        if (std.mem.eql(u8, lh, "for")) {
+            emitStmt(node);
+            if (!std.mem.eql(u8, ret_type, "void")) emit("return 0;\n");
             return;
         }
         if (std.mem.eql(u8, lh, "cond")) {
