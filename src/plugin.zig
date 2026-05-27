@@ -293,6 +293,11 @@ const binops = [_]struct { sym: []const u8, op: []const u8 }{
     .{ .sym = "!=", .op = "!=" },
     .{ .sym = "and", .op = "&&" },
     .{ .sym = "or", .op = "||" },
+    .{ .sym = "bit-and", .op = "&" },
+    .{ .sym = "bit-or", .op = "|" },
+    .{ .sym = "bit-xor", .op = "^" },
+    .{ .sym = "shl", .op = "<<" },
+    .{ .sym = "shr", .op = ">>" },
 };
 
 fn findBinop(sym: []const u8) ?[]const u8 {
@@ -305,7 +310,7 @@ fn findBinop(sym: []const u8) ?[]const u8 {
 fn emitExpr(node: *Node) void {
     switch (node.kind) {
         .number => emit(node.text),
-        .symbol => emit(node.text),
+        .symbol => emit(if (std.mem.eql(u8, node.text, "nil")) "null" else node.text),
         .string => {
             emit("\"");
             emit(node.text);
@@ -354,6 +359,33 @@ fn emitExpr(node: *Node) void {
                     emit(")");
                     return;
                 }
+                if (std.mem.eql(u8, head.text, "aref") and args.len == 2) {
+                    emitExpr(args[0]);
+                    emit("[");
+                    emitExpr(args[1]);
+                    emit("]");
+                    return;
+                }
+                if (std.mem.eql(u8, head.text, "addr") and args.len == 1) {
+                    emit("(&");
+                    emitExpr(args[0]);
+                    emit(")");
+                    return;
+                }
+                if (std.mem.eql(u8, head.text, "deref") and args.len == 1) {
+                    emit("(*");
+                    emitExpr(args[0]);
+                    emit(")");
+                    return;
+                }
+                if (std.mem.eql(u8, head.text, "cast") and args.len == 2) {
+                    emit("(");
+                    emitExpr(args[0]);
+                    emit(" as ");
+                    emit(args[1].text);
+                    emit(")");
+                    return;
+                }
                 if (std.mem.startsWith(u8, head.text, "@")) {
                     emit(head.text);
                     emit("(");
@@ -393,6 +425,25 @@ fn emitStmt(node: *Node) void {
     const args = node.children.items[1..];
 
     if (std.mem.eql(u8, head.text, "set")) {
+        emitExpr(args[0]);
+        emit(" = ");
+        emitExpr(args[1]);
+        emit(";\n");
+        return;
+    }
+    if (std.mem.eql(u8, head.text, "aset")) {
+        // (aset a i v) -> a[i] = v;
+        emitExpr(args[0]);
+        emit("[");
+        emitExpr(args[1]);
+        emit("] = ");
+        emitExpr(args[2]);
+        emit(";\n");
+        return;
+    }
+    if (std.mem.eql(u8, head.text, "store")) {
+        // (store p v) -> *p = v;
+        emit("*");
         emitExpr(args[0]);
         emit(" = ");
         emitExpr(args[1]);
