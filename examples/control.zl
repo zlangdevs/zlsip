@@ -1,0 +1,26 @@
+?? cond / when / unless / for and typed let.
+lisp {
+    (defn sign (n)
+        (cond
+            ((< n 0) (return -1))
+            ((= n 0) (return 0))
+            (else (return 1))))
+
+    (defn clamp_pos (n)
+        (do
+            (when (< n 0) (set n 0))
+            n))
+
+    (defn sum_to (n)
+        (let ((acc 0))
+            (for (i 1 (+ n 1))
+                (set acc (+ acc i)))
+            acc))
+}
+
+fun main() >> i32 {
+    @printf("sign: %d %d %d\n", sign(-5), sign(0), sign(8));
+    @printf("clamp_pos(-3) = %d\n", clamp_pos(-3));
+    @printf("sum 1..10 = %d\n", sum_to(10));
+    return 0;
+}

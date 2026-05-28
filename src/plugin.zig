@@ -45,7 +45,7 @@ var probe_singleton: ProbeResult = .{
     .api_min = 1,
     .api_max = 3,
     .name = "zlisp",
-    .version = "0.1.0",
+    .version = "0.2.0",
     .requires_host_features = null,
 };
 
@@ -53,7 +53,7 @@ var desc_singleton: PluginDesc = .{
     .api_min = 1,
     .api_max = 3,
     .name = "zlisp",
-    .version = "0.1.0",
+    .version = "0.2.0",
     .register_plugin = registerPlugin,
     .session_begin = sessionBegin,
     .session_end = sessionEnd,

@@ -1,0 +1,20 @@
+?? Template macros: defmacro expands at compile time, before codegen.
+?? Macros defined in one lisp block are visible in later blocks too.
+lisp {
+    (defmacro square (x) (* x x))
+    (defmacro inc! (v) (set v (+ v 1)))
+    (defmacro max2 (a b) (cond ((> a b) a) (else b)))
+
+    (defn hypot_sq (a b) (+ (square a) (square b)))
+    (defn bigger (a b) (max2 a b))
+}
+
+fun main() >> i32 {
+    @printf("hypot_sq(3,4) = %d\n", hypot_sq(3, 4));   ?? 25
+    @printf("bigger(7,12)  = %d\n", bigger(7, 12));     ?? 12
+
+    i32 c = 40;
+    lisp { (inc! c) (inc! c) };
+    @printf("c = %d\n", c);                             ?? 42
+    return 0;
+}

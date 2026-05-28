@@ -77,23 +77,53 @@ fun main() >> i32 {
   `(defn name (a b) -> i64 body...)`.
 - Parameter types default to `i32`. Specify via
   `((a i32) (b i64))` form.
-- `(let ((x 1) (y 2)) body...)` — declare locals, run body.
+- `(let ((x 1) (y 2)) body...)` — declare locals, run body. A binding
+  may carry a type: `(x i64 5)` declares `i64 x = 5`.
 - `(set name expr)` — assignment.
 - `(if cond then else)` — both as statement and as the last
   expression of a defn (each branch then returns).
+- `(cond (test body...) ... (else body...))` — multi-way branch,
+  usable as a statement or in tail position.
+- `(when cond body...)` / `(unless cond body...)` — one-armed guards.
 - `(while cond body...)` — loop.
+- `(for (i start end [step]) body...)` — counting loop, expands to a
+  C-style `for`.
 - `(do a b ...)` — sequence; last is the value.
 - `(return expr)` — explicit return.
 - Arithmetic: `+ - * / %` (variadic for the first four).
 - Comparisons: `< > <= >= = !=`.
 - Boolean: `and or not`.
+- Bitwise: `bit-and bit-or bit-xor shl shr` (variadic).
+- Memory: `(aref a i)` → `a[i]`, `(aset a i v)` → `a[i] = v`,
+  `(addr x)` → `&x`, `(deref p)` → `*p`, `(store p v)` → `*p = v`.
+- `(cast x T)` → `x as T`. `nil` → `null`.
 - Calls: `(name args...)` translates to `name(args...)`. Names
   starting with `@` are emitted as zlang built-in calls
   (e.g. `(@printf "%d\n" x)`).
 - Numbers, identifiers, double-quoted strings.
 
+## Macros
+
+`(defmacro name (params) body...)` defines a compile-time template
+macro. Calls are expanded by substituting arguments into the body,
+then re-expanded so macros can build on other macros. Macros defined
+in one `lisp { ... }` block are visible in every later block of the
+same file.
+
+```zl
+lisp {
+    (defmacro square (x) (* x x))
+    (defmacro inc! (v) (set v (+ v 1)))
+    (defn hypot_sq (a b) (+ (square a) (square b)))
+}
+```
+
+Substitution is unhygienic (no gensym yet), so pick distinct names
+for macro-introduced bindings.
+
 ## Status
 
-First cut. v0.1.0 targets `linux-x86_64`. No macros, no closures, no
-list runtime, no tail-call elimination beyond what LLVM does for
-the generated zlang functions.
+v0.2.0 targets `linux-x86_64`. Has template macros, `cond`/`when`/
+`unless`, `for`, typed `let`, bitwise and pointer/array forms. No
+closures, no hygienic macros, no list runtime, no tail-call
+elimination beyond what LLVM does for the generated zlang functions.
