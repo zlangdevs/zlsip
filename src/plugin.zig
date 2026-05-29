@@ -144,23 +144,11 @@ const Parser = struct {
     }
 };
 
-// --- Macro system -----------------------------------------------------------
-// defmacro defines a template macro. Expansion is substitution-based: every
-// occurrence of a parameter symbol in the body is replaced by the matching
-// argument subtree, then the result is re-expanded so macros can build on
-// macros. All nodes produced during expansion are tracked in `macro_pool` and
-// freed together; originals (owned by the parse forms) are never shared.
-
 const MacroDef = struct {
     params: std.ArrayList([]const u8),
     body: *Node,
 };
 
-// `macros` and `session_pool` persist for the whole compilation (across every
-// `lisp { ... }` block in a file), so a macro defined in one block is usable in
-// later ones. Macro bodies are deep-copied with duplicated text into
-// `session_pool` because the per-block parse forms and raw source are freed
-// after each handler call. `expand_pool` is per-block scratch for expansion.
 var macros: std.StringHashMap(MacroDef) = undefined;
 var macros_ready: bool = false;
 var session_pool: std.ArrayList(*Node) = .empty;
@@ -240,7 +228,7 @@ fn expand(node: *Node, depth: u32) ParseError!*Node {
 
 fn registerMacro(node: *Node) ParseError!void {
     const items = node.children.items;
-    if (items.len < 4) return; // (defmacro name (params) body...)
+    if (items.len < 4) return;
     const name = items[1];
     const params_node = items[2];
     const body_forms = items[3..];
@@ -432,7 +420,6 @@ fn emitStmt(node: *Node) void {
         return;
     }
     if (std.mem.eql(u8, head.text, "aset")) {
-        // (aset a i v) -> a[i] = v;
         emitExpr(args[0]);
         emit("[");
         emitExpr(args[1]);
@@ -442,7 +429,6 @@ fn emitStmt(node: *Node) void {
         return;
     }
     if (std.mem.eql(u8, head.text, "store")) {
-        // (store p v) -> *p = v;
         emit("*");
         emitExpr(args[0]);
         emit(" = ");
@@ -456,7 +442,6 @@ fn emitStmt(node: *Node) void {
         return;
     }
     if (std.mem.eql(u8, head.text, "for")) {
-        // (for (i start end [step]) body...)
         const spec = args[0];
         const it = spec.children.items;
         const var_name = it[0].text;
@@ -531,7 +516,6 @@ fn emitStmt(node: *Node) void {
     emit(";\n");
 }
 
-// Each binding is (name value) -> i32, or (name type value) -> typed.
 fn emitLetBindings(bindings: *Node) void {
     for (bindings.children.items) |b| {
         const it = b.children.items;
@@ -564,7 +548,6 @@ fn emitCondBody(body: []*Node, ret_type: ?[]const u8) void {
     }
 }
 
-// (cond (test body...) ... (else body...)) -> if / else if / else chain.
 fn emitCond(clauses: []*Node, ret_type: ?[]const u8) void {
     var first = true;
     for (clauses) |clause| {
@@ -704,9 +687,6 @@ fn lispHandler(host: *HostApi, input: *const BlockInput, output: *BlockOutput) c
         forms.append(alloc, node) catch return 1;
     }
 
-    // Macro pass: register defmacro forms, then expand everything else.
-    // `macros`/`session_pool` persist across blocks (set up in sessionBegin);
-    // `expand_pool` is scratch freed at the end of this block.
     if (!macros_ready) resetMacros();
     defer {
         for (expand_pool.items) |n| {

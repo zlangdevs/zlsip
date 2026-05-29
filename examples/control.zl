@@ -1,4 +1,3 @@
-?? cond / when / unless / for and typed let.
 lisp {
     (defn sign (n)
         (cond
