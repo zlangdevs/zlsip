@@ -1,45 +1,14 @@
 const std = @import("std");
+const sdk = @import("zlx");
 
-const HostApi = extern struct {
-    api_version: u32,
-    register_syntax_block: *const fn (host: *HostApi, name: [*:0]const u8, syntax: *const BlockSyntax, handler: BlockHandler) callconv(.c) c_int,
-    register_help_section: *const fn (host: *HostApi, id: [*:0]const u8, text: [*:0]const u8) callconv(.c) c_int,
-    register_cli_flag: *const fn (host: *HostApi, name: [*:0]const u8, help: ?[*:0]const u8, mandatory: c_int) callconv(.c) c_int,
-    register_module: *const fn (host: *HostApi, name: [*:0]const u8, path: [*:0]const u8) callconv(.c) c_int,
-    register_link_flag: *const fn (host: *HostApi, flag: [*:0]const u8) callconv(.c) c_int,
-    diagnostic: *const fn (host: *HostApi, level: c_int, file: ?[*:0]const u8, line: u32, column: u32, message: [*:0]const u8, hint: ?[*:0]const u8) callconv(.c) void,
-    resolve_type_size: *const fn (host: *HostApi, file: [*:0]const u8, type_name: [*:0]const u8) callconv(.c) i32,
-    get_cli_flag: *const fn (host: *HostApi, name: [*:0]const u8) callconv(.c) ?[*:0]const u8,
-};
-
-const BlockSyntax = extern struct { mode: c_int, terminator: ?[*:0]const u8 };
-const BlockInput = extern struct { file: [*:0]const u8, line: u32, column: u32, raw_source: [*]const u8, raw_source_len: u32 };
-const SourceMapEntry = extern struct { generated_offset: u32, original_line: u32, original_column: u32 };
-const BlockOutput = extern struct {
-    generated_zlang_source: [*]const u8,
-    generated_zlang_source_len: u32,
-    source_map: ?[*]const SourceMapEntry,
-    source_map_len: u32,
-};
-const BlockHandler = *const fn (host: *HostApi, input: *const BlockInput, output: *BlockOutput) callconv(.c) c_int;
-
-const ProbeResult = extern struct {
-    api_min: u32,
-    api_max: u32,
-    name: [*:0]const u8,
-    version: [*:0]const u8,
-    requires_host_features: ?[*:null]const ?[*:0]const u8,
-};
-
-const PluginDesc = extern struct {
-    api_min: u32,
-    api_max: u32,
-    name: [*:0]const u8,
-    version: [*:0]const u8,
-    register_plugin: *const fn (host: *HostApi) callconv(.c) c_int,
-    session_begin: ?*const fn (host: *HostApi) callconv(.c) void,
-    session_end: ?*const fn (host: *HostApi) callconv(.c) void,
-};
+const HostApi = sdk.HostApi;
+const BlockSyntax = sdk.BlockSyntax;
+const BlockInput = sdk.BlockInput;
+const BlockOutput = sdk.BlockOutput;
+const BlockHandler = sdk.BlockHandler;
+const SourceMapEntry = sdk.SourceMapEntry;
+const ProbeResult = sdk.ProbeResult;
+const PluginDesc = sdk.PluginDesc;
 
 var probe_singleton: ProbeResult = .{
     .api_min = 1,
@@ -767,7 +736,7 @@ fn sessionEnd(host: *HostApi) callconv(.c) void {
 }
 
 fn registerPlugin(host: *HostApi) callconv(.c) c_int {
-    const syntax = BlockSyntax{ .mode = 1, .terminator = null };
+    const syntax = BlockSyntax{ .mode = .brace_counting, .terminator = null };
     _ = host.register_syntax_block(host, "lisp", &syntax, lispHandler);
     return 0;
 }
